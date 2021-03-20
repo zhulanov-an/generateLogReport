@@ -19,7 +19,7 @@ TOP_IP = "top_ip"
 REPORT = {
     CNT_REQ_KEY: 0,
     CNT_BY_TYPE_REQ: defaultdict(int),
-    TOP_IP: dict()
+    TOP_IP: defaultdict(int)
 }
 
 # key items
@@ -62,18 +62,6 @@ def get_path_logs(logdir, logfile):
     return logs
 
 
-def get_count_requests(lines):
-    return len(lines)
-
-
-def get_count_by_type_request(lines):
-    req_type_cnt = defaultdict(int)
-    for line in lines:
-        type_req = line[TYPE_REQ]
-        req_type_cnt[type_req] += 1
-    return req_type_cnt
-
-
 def get_value_by_regex(regex, value):
     try:
         match = re.findall(regex, value)
@@ -112,6 +100,18 @@ def get_lines(file_path):
         d = get_dict_by_line(line)
         d_lines.append(d)
     return d_lines
+
+
+def get_count_requests(lines):
+    return len(lines)
+
+
+def get_count_by_type_request(lines):
+    req_type_cnt = defaultdict(int)
+    for line in lines:
+        type_req = line[TYPE_REQ]
+        req_type_cnt[type_req] += 1
+    return req_type_cnt
 
 
 def get_top_ip(lines):

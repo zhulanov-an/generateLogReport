@@ -15,12 +15,16 @@ EXT_LOG = ".log"
 CNT_REQ_KEY = "count_requests"
 CNT_BY_TYPE_REQ = "count_by_type_requests"
 TOP_IP = "top_ip"
+LONGEST_REQUESTS = "the_longest_requests"
 
 REPORT = {
     CNT_REQ_KEY: 0,
     CNT_BY_TYPE_REQ: defaultdict(int),
-    TOP_IP: defaultdict(int)
+    TOP_IP: defaultdict(int),
+    LONGEST_REQUESTS: list()
 }
+
+CNT_OF_MOST_COMMON = 10
 
 # key items
 IP = "ip"
@@ -62,15 +66,14 @@ def get_path_logs(logdir, logfile):
     return logs
 
 
-def get_value_by_regex(regex, value):
-    try:
-        match = re.findall(regex, value)
-        return match[0]
-    except Exception as e:
-        exit(f"ошибка поиска по маске {regex} в значении {value}")
-
-
 def get_dict_by_line(line):
+    def get_value_by_regex(regex, value, type_value=str):
+        try:
+            match = re.findall(regex, value)
+            return type_value(match[0])
+        except Exception as e:
+            exit(f"ошибка поиска по маске {regex} в значении {value}")
+
     regex_ip = r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
     regex_type_req = r"OPTIONS|GET|HEAD|POST|PUT|PATCH|DELETE|TRACE"
     regex_duration = r'\"\s\d{3}\s(\d+)\s'
@@ -81,10 +84,10 @@ def get_dict_by_line(line):
     d = dict()
     d[IP] = get_value_by_regex(regex_ip, line)
     d[TYPE_REQ] = get_value_by_regex(regex_type_req, line)
-    d[DURATION] = get_value_by_regex(regex_duration, line)
+    d[DURATION] = get_value_by_regex(regex_duration, line, type_value=int)
     d[URL] = get_value_by_regex(regex_url, line)
     d[TIME] = get_value_by_regex(regex_time, line)
-    d[STATUS] = get_value_by_regex(regex_status, line)
+    d[STATUS] = get_value_by_regex(regex_status, line, type_value=int)
     return d
 
 
@@ -117,15 +120,28 @@ def get_count_by_type_request(lines):
 def get_top_ip(lines):
     ips = [line[IP] for line in lines]
     cnt = Counter(ips)
-    top = cnt.most_common(10)
+    top = cnt.most_common(CNT_OF_MOST_COMMON)
     return dict(top)
 
 
 def get_max_duration(lines):
-    durs = [line[DURATION] for line in lines]
-    cnt = Counter(durs)
-    top = cnt.most_common(10)
-    return dict(top)
+    sort_by_duration = sorted(lines, key=lambda d: d[DURATION])[:CNT_OF_MOST_COMMON]
+    dur_list = list()
+    for l in sort_by_duration:
+        dur_list.append(
+            {
+                TYPE_REQ: l.get(TYPE_REQ),
+                URL: l.get(URL),
+                IP: l.get(IP),
+                DURATION: l.get(DURATION)
+            }
+        )
+    return dur_list
+
+
+def most_common_record_by_duration(lines):
+    report_long_req = lines + REPORT[LONGEST_REQUESTS]
+    return sorted(report_long_req, key=lambda d: d[DURATION], reverse=True)[:CNT_OF_MOST_COMMON]
 
 
 for log in get_path_logs(logdir, logfile):
@@ -133,10 +149,12 @@ for log in get_path_logs(logdir, logfile):
     cnt = get_count_requests(d_lines)
     req_type_cnt = get_count_by_type_request(d_lines)
     top_ips = get_top_ip(d_lines)
+    dur_lines = get_max_duration(d_lines)
 
     REPORT[CNT_REQ_KEY] = REPORT[CNT_REQ_KEY] + cnt
     REPORT[CNT_BY_TYPE_REQ] = REPORT[CNT_BY_TYPE_REQ] | req_type_cnt
     REPORT[TOP_IP] = REPORT[TOP_IP] | top_ips
+    REPORT[LONGEST_REQUESTS] = most_common_record_by_duration(dur_lines)
 
 with open('report.json', 'w') as fp:
-    json.dump(REPORT, fp)
+    json.dump(REPORT, fp, indent=4)

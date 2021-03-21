@@ -35,7 +35,6 @@ IP_KEY_ITEM = "ip"
 TYPE_REQ_KEY_ITEM = "type_req"
 DURATION_KEY_ITEM = "duration"
 URL_KEY_ITEM = "url"
-TIME_KEY_ITEM = "time"
 STATUS_KEY_ITEM = "status"
 
 parser = argparse.ArgumentParser()
@@ -53,7 +52,7 @@ def get_path_logs(logdir, logfile):
     if not logdir and not logfile:
         exit("Choose log files directory or log file")
     elif logdir and not logfile:
-        if os.path.exists(logdir) and os.path.isdir(logdir):
+        if not os.path.exists(logdir) and not os.path.isdir(logdir):
             exit(f"{logdir} isn't directory")
         for root, dirs, files in os.walk(logdir):
             for name in files:
@@ -74,24 +73,25 @@ def get_dict_by_line(line):
     def get_value_by_regex(regex, value, type_value=str):
         try:
             match = re.findall(regex, value)
-            return type_value(match[0])
+            if match:
+                return type_value(match[0])
+            else:
+                return 0 if type_value == int else None
         except Exception as e:
-            exit(f"ошибка поиска по маске {regex} в значении {value}")
+            print(f"ошибка поиска: {regex} в значении {value} exc:{e} match:{match}")
 
     regex_ip = r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    regex_type_req = r"OPTIONS|GET|HEAD|POST|PUT|PATCH|DELETE|TRACE"
+    regex_type_req = r"OPTIONS|GET|HEAD|POST|PUT|PATCH|DELETE|TRACE|Head|T"
     regex_duration = r'\"\s\d{3}\s(\d+)\s'
     regex_url = r'\".+\s(.+)\sHTTP'
-    regex_time = r'\[(.+)\]'
-    regex_status = r'\"\s(\d{3})\s\d+\s'
+    regex_status = r'HTTP\/1\.[10]\"\s(\d{3})\s'
 
     d = dict()
+    d[DURATION_KEY_ITEM] = get_value_by_regex(regex_duration, line, type_value=int)
+    d[STATUS_KEY_ITEM] = get_value_by_regex(regex_status, line, type_value=int)
     d[IP_KEY_ITEM] = get_value_by_regex(regex_ip, line)
     d[TYPE_REQ_KEY_ITEM] = get_value_by_regex(regex_type_req, line)
-    d[DURATION_KEY_ITEM] = get_value_by_regex(regex_duration, line, type_value=int)
     d[URL_KEY_ITEM] = get_value_by_regex(regex_url, line)
-    d[TIME_KEY_ITEM] = get_value_by_regex(regex_time, line)
-    d[STATUS_KEY_ITEM] = get_value_by_regex(regex_status, line, type_value=int)
     return d
 
 
@@ -107,10 +107,6 @@ def get_lines(file_path):
         d = get_dict_by_line(line)
         d_lines.append(d)
     return d_lines
-
-
-def get_count_requests(lines):
-    return len(lines)
 
 
 def get_count_by_type_request(lines):
@@ -129,7 +125,7 @@ def get_top_ip(lines):
 
 
 def get_max_duration(lines):
-    sort_by_duration = sorted(lines, key=lambda d: d[DURATION_KEY_ITEM])[:CNT_OF_MOST_COMMON]
+    sort_by_duration = sorted(lines, key=lambda d: d[DURATION_KEY_ITEM], reverse=True)[:CNT_OF_MOST_COMMON]
     dur_list = list()
     for l in sort_by_duration:
         dur_list.append(
@@ -149,20 +145,32 @@ def most_common_record_by_duration(lines):
 
 
 def get_common_error(lines, start_err, end_err):
-    d_client_err = dict()
+    d_client_err = defaultdict(list)
     for err in range(start_err, end_err + 1):
-        d_client_err[err] = list(filter(lambda l: l[STATUS_KEY_ITEM] == err, lines))
+        lst = list(filter(lambda l: l[STATUS_KEY_ITEM] == err, lines))
+        if lst:
+            d_client_err[err] = lst
 
     def order_by_len(item):
         return len(item[1])
 
-    sorted_by_cnt_error = sorted(d_client_err.items(), key=order_by_len, reverse=True)[:CNT_OF_MOST_COMMON]
-    return dict(sorted_by_cnt_error)
+    sorted_by_cnt_error = dict(sorted(d_client_err.items(), key=order_by_len, reverse=True)[:CNT_OF_MOST_COMMON])
+
+    new_error_dict = defaultdict(list)
+    for err, v in sorted_by_cnt_error.items():
+        for row in v:
+            new_row = dict()
+            new_row[TYPE_REQ_KEY_ITEM] = row[TYPE_REQ_KEY_ITEM]
+            new_row[URL_KEY_ITEM] = row[URL_KEY_ITEM]
+            new_row[STATUS_KEY_ITEM] = row[STATUS_KEY_ITEM]
+            new_row[IP_KEY_ITEM] = row[IP_KEY_ITEM]
+            new_error_dict[err].append(new_row)
+    return dict(new_error_dict)
 
 
 for log in get_path_logs(logdir, logfile):
     d_lines = get_lines(log)
-    cnt = get_count_requests(d_lines)
+    cnt = len(d_lines)
     req_type_cnt = get_count_by_type_request(d_lines)
     top_ips = get_top_ip(d_lines)
     dur_lines = get_max_duration(d_lines)

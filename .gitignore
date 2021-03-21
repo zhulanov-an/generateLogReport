@@ -127,7 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#projects files
 .idea/
 report.json
 access.log
+access.txt
 cuted_access.log
+cuted_access_2.log
